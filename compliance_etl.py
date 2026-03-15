@@ -1,3 +1,32 @@
+"""
+Module: compliance_etl.py
+Description: Enterprise-grade ETL pipeline for SEC Insider Trading data.
+Architecture: Zero-Trust / PII-Masked Ingestion
+
+EXTENDED TECHNICAL DESCRIPTION:
+-------------------------------
+1. DATA INGESTION: 
+   Leverages the yfinance API to extract Form 4 (Insider Trading) disclosures. 
+   The script implements a dynamic attribute check to handle upstream API 
+   versioning shifts (v0.2.x), ensuring resilient data retrieval.
+
+2. CRYPTOGRAPHIC MASKING (Security):
+   Implements a deterministic SHA-256 hashing algorithm combined with a 
+   salted environmental variable. This ensures that:
+   - Identifiable names/titles never enter the storage layer (GitHub/CSV).
+   - Behavioral consistency is preserved (the same executive always 
+     resolves to the same masked ID), allowing for historical analysis 
+     without compromising PII.
+
+3. DATA NORMALIZATION:
+   Cleans and casts financial data types (Shares, Value) for seamless 
+   integration with Power BI and future ML modeling.
+
+4. AUTOMATION:
+   Designed for headless execution via GitHub Actions. Uses standard 
+   exit codes to signal pipeline health to the CI/CD runner.
+"""
+
 # MIT License | Copyright (c) 2026 Compliance Flow ETL
 import yfinance as yf
 import hashlib
@@ -22,7 +51,7 @@ def test_masking_integrity(df):
 
 def main():
     # Watchlist to ensure we get data even if one API endpoint is throttled
-    watchlist = ["AAPL", "TSLA", "MSFT", "GOOGL", "AMZN"]
+    watchlist = ["AAPL", "TSLA", "MSFT", "GOOGL", "AMZN", "NVDA", "META"]
     combined_data = []
 
     try:
