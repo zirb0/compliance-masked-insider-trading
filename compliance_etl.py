@@ -39,6 +39,33 @@ def salt_and_hash(text, salt=os.getenv('COMPLIANCE_SALT', 'DEFAULT_STATIC_SALT')
     active_salt = salt if (salt and salt != 'DEFAULT_STATIC_SALT') else "EMERGENCY_PROTECTION_SALT"
     return hashlib.sha256((text_str + active_salt).encode()).hexdigest()
 
+import datetime
+
+def get_30_day_price_change(ticker_symbol, trade_date_str):
+    """Calculates the percentage change in stock price 30 days after a trade."""
+    try:
+        # Convert string to datetime
+        trade_date = pd.to_datetime(trade_date_str).tz_localize(None)
+        end_date = trade_date + datetime.timedelta(days=40) # Buffer for weekends/holidays
+        
+        # Fetch historical data for that specific window
+        hist = yf.download(ticker_symbol, start=trade_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'), progress=False)
+        
+        if hist.empty or len(hist) < 2:
+            return None
+            
+        # Price on (or immediately after) trade date
+        price_at_trade = hist['Close'].iloc[0].item() 
+        # Price ~30 days later (last available row in our 40-day buffer)
+        price_30d_later = hist['Close'].iloc[-1].item()
+        
+        # Calculate Percentage Delta
+        delta = (price_30d_later - price_at_trade) / price_at_trade
+        return round(delta, 4) # Returns a decimal like 0.0521 (5.21%)
+        
+    except Exception as e:
+        return None
+       
 def test_masking_integrity(df):
     """Unit Test: Verifies complete PII removal"""
     forbidden = ["Cook", "Musk", "Nadella", "CEO", "Director", "President", "Officer"] 
