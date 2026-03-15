@@ -1,0 +1,47 @@
+name: Compliance Flow Weekly Sync
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  compliance-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas yfinance
+
+      - name: Execute Masking Pipeline
+        env:
+          COMPLIANCE_SALT: ${{ secrets.COMPLIANCE_SALT }}
+        run: python compliance_etl.py
+
+      - name: Data Quality Check
+        run: |
+          if [ ! -s masked_insider_trading.csv ]; then
+            echo "DQ Error: Masked file is empty or missing!"
+            exit 1
+          fi
+          echo "DQ Success: File validated for size and presence."
+
+      - name: Commit Secure Logs
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add masked_insider_trading.csv
+          git commit -m "compliance: automated masking sync [skip ci]" || echo "No changes"
+          git push
