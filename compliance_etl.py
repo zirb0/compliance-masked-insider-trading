@@ -131,7 +131,8 @@ def main():
         full_df['mask_executive_id'] = full_df['Insider'].apply(salt_and_hash)
         full_df['mask_position_id'] = full_df['Position'].apply(salt_and_hash)
         
-        secure_df = full_df.drop(columns=['Insider', 'Position'])
+        # Drop PII and empty API artifacts like 'Transaction'
+        secure_df = full_df.drop(columns=['Insider', 'Position', 'Transaction'], errors='ignore')
         
         test_masking_integrity(secure_df)
         secure_df.to_csv('masked_insider_trading.csv', index=False)
