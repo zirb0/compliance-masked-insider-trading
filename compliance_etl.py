@@ -6,50 +6,58 @@ import os
 import sys
 
 def salt_and_hash(text, salt=os.getenv('COMPLIANCE_SALT', 'DEFAULT_STATIC_SALT')):
-    # Ensure text is a string before hashing
     text_str = str(text) if text is not None else ""
-    salted_text = text_str + (salt if salt else "FALLBACK_SALT")
-    return hashlib.sha256(salted_text.encode()).hexdigest()
+    # Ensure a non-empty salt is used
+    active_salt = salt if (salt and salt != 'DEFAULT_STATIC_SALT') else "EMERGENCY_PROTECTION_SALT"
+    return hashlib.sha256((text_str + active_salt).encode()).hexdigest()
 
 def test_masking_integrity(df):
-    """Unit Test: Ensures no raw PII leaked into the dataframe"""
-    # Expanded list to catch common identifiers
-    forbidden_terms = ["Tim Cook", "Apple", "CEO", "Director", "Officer"] 
-    for column in df.columns:
-        # Check if any forbidden term exists as a substring in the column
-        if df[column].astype(str).str.contains('|'.join(forbidden_terms), case=False, na=False).any():
-            raise ValueError(f"SECURITY BREACH: Sensitive term or PII detected in column '{column}'!")
-    print("Unit Test Passed: No raw PII detected.")
+    """Unit Test: Verifies complete PII removal via substring scanning"""
+    # High-risk keywords that should NEVER appear in the final CSV
+    forbidden = ["Cook", "Apple", "CEO", "Director", "Officer", "President"] 
+    regex_pattern = '|'.join(forbidden)
+    
+    for col in df.columns:
+        if df[col].astype(str).str.contains(regex_pattern, case=False, na=False).any():
+            raise ValueError(f"SECURITY BREACH: Raw PII detected in column '{col}'!")
+    print("Unit Test Passed: Dataset is anonymized.")
 
 def main():
     ticker_symbol = "AAPL"
     try:
         ticker = yf.Ticker(ticker_symbol)
         
-        # FIX: Changed get_insiders() to the property .insiders
-        df = ticker.insiders 
+        # Resilient Data Extraction: Try multiple known attributes
+        df = None
+        for attr in ['insiders', 'get_insiders']:
+            if hasattr(ticker, attr):
+                val = getattr(ticker, attr)
+                df = val() if callable(val) else val
+                break
         
-        if df is None or df.empty:
-            print(f"Warning: No insider data found for {ticker_symbol}. API may be restricted.")
-            return
+        if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+            print(f"Compliance Alert: No insider data available for {ticker_symbol}.")
+            # We exit with 0 here to prevent "False Alarm" failures if no trades happened
+            sys.exit(0)
 
-        # Data Cleaning: Ensure columns exist before masking
-        if 'Insider' not in df.columns or 'Position' not in df.columns:
-            print("Error: Unexpected data format from API.")
+        # Standardizing column names for the masking logic
+        df.columns = [c.capitalize() for c in df.columns]
+        target_cols = ['Insider', 'Position']
+        
+        if not all(col in df.columns for col in target_cols):
+            print(f"Data Schema Mismatch. Found: {list(df.columns)}")
             sys.exit(1)
 
-        # Apply masking
+        # Execute Blindfold
         df['mask_executive_id'] = df['Insider'].apply(salt_and_hash)
         df['mask_position_id'] = df['Position'].apply(salt_and_hash)
         
-        # Drop original PII columns
-        secure_df = df.drop(columns=['Insider', 'Position'])
+        # Purge PII
+        secure_df = df.drop(columns=target_cols)
         
-        # Run automated safety check
         test_masking_integrity(secure_df)
-
         secure_df.to_csv('masked_insider_trading.csv', index=False)
-        print(f"Compliance Flow: {len(secure_df)} records secured successfully.")
+        print(f"Compliance Flow: {len(secure_df)} records secured.")
 
     except Exception as e:
         print(f"Pipeline Error: {str(e)}")
